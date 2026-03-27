@@ -10,7 +10,7 @@ local CONFIG = {
     { label = "3:1", width = 3, height = 1 },
     { label = "3:2", width = 3, height = 2 },
   },
-  widthPresets = { 1600, 1800, 2000, 2200, 2400 },
+  widthPresets = { 1400, 1600, 1800, 2000, 2200, 2400 },
   heightPresets = { 1000, 1200, 1400, 1500 },
   growStep = 100,
   cornerPresets = {
