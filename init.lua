@@ -51,6 +51,7 @@ deleteObject(WindowManager.entryHotkey)
 deleteObject(WindowManager.windowMode)
 deleteObject(WindowManager.modalTimer)
 deleteObject(WindowManager.modalCanvas)
+deleteObject(WindowManager.modalKeyGuard)
 
 local winwin = hs.loadSpoon("WinWin")
 if not winwin then
@@ -84,6 +85,18 @@ local function closeModalOverlay()
       WindowManager.modalCanvas:delete()
     end)
     WindowManager.modalCanvas = nil
+  end
+end
+
+local function stopModalKeyGuard()
+  if WindowManager.modalKeyGuard then
+    pcall(function()
+      WindowManager.modalKeyGuard:stop()
+    end)
+    pcall(function()
+      WindowManager.modalKeyGuard:delete()
+    end)
+    WindowManager.modalKeyGuard = nil
   end
 end
 
@@ -332,6 +345,7 @@ end
 
 WindowManager.modalState = WindowManager.modalState or { group = nil, moveBottomMode = false }
 local modalState = WindowManager.modalState
+WindowManager.modalFlags = WindowManager.modalFlags or {}
 
 local function resetModalState()
   modalState.group = nil
@@ -596,6 +610,202 @@ local function handleResizeShortcut(action)
   end
 end
 
+local function hasOnlyShift(flags)
+  if not flags.shift then
+    return false
+  end
+
+  for key, enabled in pairs(flags) do
+    if enabled and key ~= "shift" then
+      return false
+    end
+  end
+
+  return true
+end
+
+local function isPlainModalKey(keyName, flags)
+  if next(flags) ~= nil then
+    return false
+  end
+
+  return keyName == "escape"
+    or keyName == "a"
+    or keyName == "w"
+    or keyName == "h"
+    or keyName == "m"
+    or keyName == "b"
+    or keyName == "c"
+    or keyName == "r"
+    or keyName == "g"
+    or keyName == "s"
+    or keyName == "up"
+    or keyName == "down"
+    or keyName == "left"
+    or keyName == "right"
+    or tonumber(keyName) ~= nil
+end
+
+local function isAllowedModalKey(keyName, flags)
+  return isPlainModalKey(keyName, flags) or (hasOnlyShift(flags) and (keyName == "left" or keyName == "right"))
+end
+
+local function handleModalKey(keyName, flags)
+  if keyName == "escape" and next(flags) == nil then
+    windowMode:exit()
+    return true
+  end
+
+  if keyName == "a" and next(flags) == nil then
+    setModalGroup("aspect")
+    return true
+  end
+
+  if keyName == "w" and next(flags) == nil then
+    setModalGroup("width")
+    return true
+  end
+
+  if keyName == "h" and next(flags) == nil then
+    setModalGroup("height")
+    return true
+  end
+
+  if keyName == "m" and next(flags) == nil then
+    setModalGroup("move")
+    return true
+  end
+
+  if keyName == "b" and next(flags) == nil then
+    handleMoveSelection("b", false)
+    return true
+  end
+
+  if keyName == "c" and next(flags) == nil then
+    handleMoveSelection("c", false)
+    return true
+  end
+
+  if keyName == "r" and next(flags) == nil then
+    setModalGroup("resize")
+    return true
+  end
+
+  if keyName == "g" and next(flags) == nil then
+    handleResizeShortcut("grow_both")
+    return true
+  end
+
+  if keyName == "s" and next(flags) == nil then
+    handleResizeShortcut("shrink_both")
+    return true
+  end
+
+  local number = tonumber(keyName)
+  if number and next(flags) == nil then
+    handleNumberSelection(number)
+    return true
+  end
+
+  if keyName == "up" and next(flags) == nil then
+    if modalState.group == "move" then
+      handleMoveSelection("up", false)
+    else
+      handleSizeSelection("up")
+    end
+    return true
+  end
+
+  if keyName == "down" and next(flags) == nil then
+    if modalState.group == "move" then
+      handleMoveSelection("down", false)
+    else
+      handleSizeSelection("down")
+    end
+    return true
+  end
+
+  if keyName == "left" then
+    if hasOnlyShift(flags) then
+      handleMoveSelection("left", true)
+      return true
+    end
+
+    if next(flags) == nil then
+      if modalState.group == "move" then
+        handleMoveSelection("left", false)
+      else
+        handleSizeSelection("left")
+      end
+      return true
+    end
+  end
+
+  if keyName == "right" then
+    if hasOnlyShift(flags) then
+      handleMoveSelection("right", true)
+      return true
+    end
+
+    if next(flags) == nil then
+      if modalState.group == "move" then
+        handleMoveSelection("right", false)
+      else
+        handleSizeSelection("right")
+      end
+      return true
+    end
+  end
+
+  return false
+end
+
+local function startModalKeyGuard()
+  stopModalKeyGuard()
+  WindowManager.modalFlags = {}
+
+  WindowManager.modalKeyGuard = hs.eventtap.new({
+    hs.eventtap.event.types.keyDown,
+    hs.eventtap.event.types.keyUp,
+    hs.eventtap.event.types.flagsChanged,
+  }, function(event)
+    if not windowMode then
+      return false
+    end
+
+    local eventType = event:getType()
+    if eventType == hs.eventtap.event.types.flagsChanged then
+      WindowManager.modalFlags = event:getFlags()
+      return true
+    end
+
+    if eventType == hs.eventtap.event.types.keyUp then
+      return true
+    end
+
+    if eventType ~= hs.eventtap.event.types.keyDown then
+      return true
+    end
+
+    local keyCode = event:getKeyCode()
+    local keyName = hs.keycodes.map[keyCode]
+    if not keyName then
+      return true
+    end
+
+    local flags = WindowManager.modalFlags or event:getFlags()
+    startModalTimer()
+
+    if handleModalKey(keyName, flags) then
+      return true
+    end
+
+    return true
+  end)
+
+  WindowManager.modalKeyGuard:start()
+end
+
 local function buildMenuItems()
   local modalHotkeyLabel = formatModalHotkeyLabel()
   local items = {
@@ -768,13 +978,17 @@ windowMode = WindowManager.windowMode
 
 function windowMode:entered()
   resetModalState()
+  WindowManager.modalFlags = {}
   startModalTimer()
+  startModalKeyGuard()
   showModalHome()
 end
 
 function windowMode:exited()
   stopModalTimer()
+  stopModalKeyGuard()
   closeModalOverlay()
+  WindowManager.modalFlags = {}
   resetModalState()
 end
 
