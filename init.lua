@@ -18,9 +18,10 @@ local CONFIG = {
   },
   aspectPresets = {
     { label = "16:9", width = 16, height = 9 },
+    { label = "4:3", width = 4, height = 3 },
+    { label = "3:2", width = 3, height = 2 },
     { label = "2:1", width = 2, height = 1 },
     { label = "3:1", width = 3, height = 1 },
-    { label = "3:2", width = 3, height = 2 },
   },
   widthPresets = { 1400, 1600, 1800, 2000, 2200, 2400, 2600 },
   heightPresets = { 1000, 1200, 1400, 1500 },
