@@ -25,6 +25,7 @@ local CONFIG = {
   widthPresets = { 1400, 1600, 1800, 2000, 2200, 2400, 2600 },
   heightPresets = { 1000, 1200, 1400, 1500 },
   growStep = 100,
+  moveStep = 100,
   cornerPresets = {
     { label = "Top Left", key = "topleft" },
     { label = "Center Top", key = "centertop" },
@@ -329,11 +330,12 @@ local function shrinkWindow(deltaWidth, deltaHeight, label)
   }, label, { showSize = true })
 end
 
-WindowManager.modalState = WindowManager.modalState or { group = nil }
+WindowManager.modalState = WindowManager.modalState or { group = nil, moveBottomMode = false }
 local modalState = WindowManager.modalState
 
 local function resetModalState()
   modalState.group = nil
+  modalState.moveBottomMode = false
 end
 
 local function stopModalTimer()
@@ -396,14 +398,26 @@ local function showModalGroupPrompt(group)
       return tostring(height)
     end))
   elseif group == "move" then
-    modalAlert(table.concat({
-      "Move:",
-      CONFIG.symbols.left .. " = top-left",
-      CONFIG.symbols.up .. " = center-top",
-      CONFIG.symbols.right .. " = top-right",
-      CONFIG.symbols.shift .. " + " .. CONFIG.symbols.left .. " = bottom-left",
-      CONFIG.symbols.shift .. " + " .. CONFIG.symbols.right .. " = bottom-right",
-    }, "\n"))
+    if modalState.moveBottomMode then
+      modalAlert(table.concat({
+        "Move bottom corners:",
+        CONFIG.symbols.left .. " = bottom-left",
+        CONFIG.symbols.right .. " = bottom-right",
+        "B = back",
+      }, "\n"))
+    else
+      modalAlert(table.concat({
+        "Move:",
+        CONFIG.symbols.left .. " = move left " .. CONFIG.moveStep,
+        CONFIG.symbols.right .. " = move right " .. CONFIG.moveStep,
+        CONFIG.symbols.up .. " = move up " .. CONFIG.moveStep,
+        CONFIG.symbols.down .. " = move down " .. CONFIG.moveStep,
+        CONFIG.symbols.shift .. " + " .. CONFIG.symbols.left .. " = top-left",
+        CONFIG.symbols.shift .. " + " .. CONFIG.symbols.right .. " = top-right",
+        "C = center-top",
+        "B = bottom corners",
+      }, "\n"))
+    end
   elseif group == "resize" then
     modalAlert(table.concat({
       "Resize:",
@@ -419,6 +433,7 @@ end
 
 local function setModalGroup(group)
   modalState.group = group
+  modalState.moveBottomMode = false
   showModalGroupPrompt(group)
 end
 
@@ -456,6 +471,45 @@ local function handleNumberSelection(index)
   completeModalAction()
 end
 
+local function snapPositionForDirection(origin, current, step, direction)
+  local relative = current - origin
+
+  if direction == "left" or direction == "up" then
+    return origin + (math.ceil(relative / step) - 1) * step
+  elseif direction == "right" or direction == "down" then
+    return origin + (math.floor(relative / step) + 1) * step
+  end
+
+  return current
+end
+
+local function moveByStep(direction)
+  local win = getFocusedWindow()
+  if not win then
+    return
+  end
+
+  local currentFrame = win:frame()
+  local screenFrame = win:screen():frame()
+  local targetFrame = {
+    x = currentFrame.x,
+    y = currentFrame.y,
+    w = currentFrame.w,
+    h = currentFrame.h,
+  }
+
+  if direction == "left" or direction == "right" then
+    targetFrame.x = snapPositionForDirection(screenFrame.x, currentFrame.x, CONFIG.moveStep, direction)
+  elseif direction == "up" or direction == "down" then
+    targetFrame.y = snapPositionForDirection(screenFrame.y, currentFrame.y, CONFIG.moveStep, direction)
+  else
+    alert("Unknown move direction: " .. tostring(direction))
+    return
+  end
+
+  applyFrame(win, targetFrame, string.format("Move %s %d px", direction, CONFIG.moveStep))
+end
+
 local function handleMoveSelection(direction, shifted)
   startModalTimer()
 
@@ -464,22 +518,43 @@ local function handleMoveSelection(direction, shifted)
     return
   end
 
-  if direction == "up" then
-    moveToCorner("centertop")
-  elseif direction == "left" and shifted then
-    moveToCorner("bottomleft")
-  elseif direction == "right" and shifted then
-    moveToCorner("bottomright")
-  elseif direction == "left" then
-    moveToCorner("topleft")
-  elseif direction == "right" then
-    moveToCorner("topright")
-  else
-    modalAlert("Use Left, Up, Right, Shift+Left, or Shift+Right")
+  if modalState.moveBottomMode then
+    if direction == "left" then
+      moveToCorner("bottomleft")
+    elseif direction == "right" then
+      moveToCorner("bottomright")
+    elseif direction == "b" then
+      modalState.moveBottomMode = false
+      showModalGroupPrompt("move")
+      return
+    else
+      modalAlert("Use Left, Right, or B")
+      return
+    end
+
+    modalState.moveBottomMode = false
+    showModalGroupPrompt("move")
     return
   end
 
-  completeModalAction()
+  if direction == "c" then
+    moveToCorner("centertop")
+  elseif direction == "b" then
+    modalState.moveBottomMode = true
+    showModalGroupPrompt("move")
+    return
+  elseif direction == "left" and shifted then
+    moveToCorner("topleft")
+  elseif direction == "right" and shifted then
+    moveToCorner("topright")
+  elseif direction == "left" or direction == "right" or direction == "up" or direction == "down" then
+    moveByStep(direction)
+  else
+    modalAlert("Use arrows, Shift+Left, Shift+Right, C, or B")
+    return
+  end
+
+  showModalGroupPrompt("move")
 end
 
 local function handleSizeSelection(direction)
@@ -564,35 +639,59 @@ local function buildMenuItems()
 
   table.insert(items, { title = "-" })
   table.insert(items, {
-    title = "Move To Corner [M then " .. CONFIG.symbols.left .. " " .. CONFIG.symbols.up .. " " .. CONFIG.symbols.right .. "]",
+    title = "Move " .. CONFIG.moveStep .. " px [M then arrows / C / B]",
     disabled = true,
   })
   table.insert(items, {
-    title = "Top Left [M " .. CONFIG.symbols.left .. "]",
+    title = "Move Left [M " .. CONFIG.symbols.left .. "]",
+    fn = function()
+      moveByStep("left")
+    end,
+  })
+  table.insert(items, {
+    title = "Move Right [M " .. CONFIG.symbols.right .. "]",
+    fn = function()
+      moveByStep("right")
+    end,
+  })
+  table.insert(items, {
+    title = "Move Up [M " .. CONFIG.symbols.up .. "]",
+    fn = function()
+      moveByStep("up")
+    end,
+  })
+  table.insert(items, {
+    title = "Move Down [M " .. CONFIG.symbols.down .. "]",
+    fn = function()
+      moveByStep("down")
+    end,
+  })
+  table.insert(items, {
+    title = "Top Left [M " .. CONFIG.symbols.shift .. " + " .. CONFIG.symbols.left .. "]",
     fn = function()
       moveToCorner("topleft")
     end,
   })
   table.insert(items, {
-    title = "Center Top [M " .. CONFIG.symbols.up .. "]",
+    title = "Center Top [M C]",
     fn = function()
       moveToCorner("centertop")
     end,
   })
   table.insert(items, {
-    title = "Top Right [M " .. CONFIG.symbols.right .. "]",
+    title = "Top Right [M " .. CONFIG.symbols.shift .. " + " .. CONFIG.symbols.right .. "]",
     fn = function()
       moveToCorner("topright")
     end,
   })
   table.insert(items, {
-    title = "Bottom Left [M " .. CONFIG.symbols.shift .. " + " .. CONFIG.symbols.left .. "]",
+    title = "Bottom Left [M B " .. CONFIG.symbols.left .. "]",
     fn = function()
       moveToCorner("bottomleft")
     end,
   })
   table.insert(items, {
-    title = "Bottom Right [M " .. CONFIG.symbols.shift .. " + " .. CONFIG.symbols.right .. "]",
+    title = "Bottom Right [M B " .. CONFIG.symbols.right .. "]",
     fn = function()
       moveToCorner("bottomright")
     end,
@@ -699,6 +798,14 @@ windowMode:bind({}, "m", function()
   setModalGroup("move")
 end)
 
+windowMode:bind({}, "b", function()
+  handleMoveSelection("b", false)
+end)
+
+windowMode:bind({}, "c", function()
+  handleMoveSelection("c", false)
+end)
+
 windowMode:bind({}, "r", function()
   setModalGroup("resize")
 end)
@@ -726,7 +833,11 @@ windowMode:bind({}, "up", function()
 end)
 
 windowMode:bind({}, "down", function()
-  handleSizeSelection("down")
+  if modalState.group == "move" then
+    handleMoveSelection("down", false)
+  else
+    handleSizeSelection("down")
+  end
 end)
 
 windowMode:bind({}, "left", function()
