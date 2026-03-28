@@ -72,6 +72,10 @@ local function alert(message)
   hs.alert.show(message, { textSize = 18 }, nil, CONFIG.alertDuration)
 end
 
+local function formatModalHotkeyLabel()
+  return table.concat(CONFIG.modalHotkey.modifiers, "+") .. "+" .. string.upper(CONFIG.modalHotkey.key)
+end
+
 local function closeModalOverlay()
   if WindowManager.modalCanvas then
     pcall(function()
@@ -356,8 +360,7 @@ local function showModalHome()
     "W = width",
     "H = height",
     "M = move",
-    "G = grow",
-    "S = shrink",
+    "R = resize",
     "Esc = cancel",
   }, "\n"))
 end
@@ -396,19 +399,15 @@ local function showModalGroupPrompt(group)
       CONFIG.symbols.shift .. " + " .. CONFIG.symbols.left .. " = bottom-left",
       CONFIG.symbols.shift .. " + " .. CONFIG.symbols.right .. " = bottom-right",
     }, "\n"))
-  elseif group == "grow" then
+  elseif group == "resize" then
     modalAlert(table.concat({
-      "Grow:",
-      CONFIG.symbols.right .. " = width",
-      CONFIG.symbols.down .. " = height",
-      CONFIG.symbols.up .. " = width + height",
-    }, "\n"))
-  elseif group == "shrink" then
-    modalAlert(table.concat({
-      "Shrink:",
-      CONFIG.symbols.right .. " = width",
-      CONFIG.symbols.down .. " = height",
-      CONFIG.symbols.up .. " = width + height",
+      "Resize:",
+      CONFIG.symbols.right .. " = grow width",
+      CONFIG.symbols.down .. " = grow height",
+      CONFIG.symbols.left .. " = shrink width",
+      CONFIG.symbols.up .. " = shrink height",
+      "G = grow width + height",
+      "S = shrink width + height",
     }, "\n"))
   end
 end
@@ -481,38 +480,44 @@ end
 local function handleSizeSelection(direction)
   startModalTimer()
 
-  if modalState.group == "grow" then
-    if direction == "right" then
-      growWindow(CONFIG.growStep, 0, "Grow width +" .. CONFIG.growStep .. " px")
-    elseif direction == "down" then
-      growWindow(0, CONFIG.growStep, "Grow height +" .. CONFIG.growStep .. " px")
-    elseif direction == "up" then
-      growWindow(CONFIG.growStep, CONFIG.growStep, "Grow size +" .. CONFIG.growStep .. " px")
-    else
-      modalAlert("Use Right, Down, or Up")
-      return
-    end
-  elseif modalState.group == "shrink" then
-    if direction == "right" then
-      shrinkWindow(CONFIG.growStep, 0, "Shrink width -" .. CONFIG.growStep .. " px")
-    elseif direction == "down" then
-      shrinkWindow(0, CONFIG.growStep, "Shrink height -" .. CONFIG.growStep .. " px")
-    elseif direction == "up" then
-      shrinkWindow(CONFIG.growStep, CONFIG.growStep, "Shrink size -" .. CONFIG.growStep .. " px")
-    else
-      modalAlert("Use Right, Down, or Up")
-      return
-    end
-  else
-    modalAlert("Press G or S first")
+  if modalState.group ~= "resize" then
+    modalAlert("Press R first")
     return
   end
 
-  completeModalAction()
+  if direction == "right" then
+    growWindow(CONFIG.growStep, 0, "Grow width +" .. CONFIG.growStep .. " px")
+  elseif direction == "down" then
+    growWindow(0, CONFIG.growStep, "Grow height +" .. CONFIG.growStep .. " px")
+  elseif direction == "left" then
+    shrinkWindow(CONFIG.growStep, 0, "Shrink width -" .. CONFIG.growStep .. " px")
+  elseif direction == "up" then
+    shrinkWindow(0, CONFIG.growStep, "Shrink height -" .. CONFIG.growStep .. " px")
+  else
+    modalAlert("Use Left, Up, Right, or Down")
+    return
+  end
+end
+
+local function handleResizeShortcut(action)
+  startModalTimer()
+
+  if modalState.group ~= "resize" then
+    modalAlert("Press R first")
+    return
+  end
+
+  if action == "grow_both" then
+    growWindow(CONFIG.growStep, CONFIG.growStep, "Grow size +" .. CONFIG.growStep .. " px")
+  elseif action == "shrink_both" then
+    shrinkWindow(CONFIG.growStep, CONFIG.growStep, "Shrink size -" .. CONFIG.growStep .. " px")
+  else
+    modalAlert("Use G or S in resize mode")
+  end
 end
 
 local function buildMenuItems()
-  local modalHotkeyLabel = table.concat(CONFIG.modalHotkey.modifiers, "+") .. "+" .. string.upper(CONFIG.modalHotkey.key)
+  local modalHotkeyLabel = formatModalHotkeyLabel()
   local items = {
     { title = "Keyboard Mode: " .. modalHotkeyLabel, disabled = true },
     { title = "-" },
@@ -590,47 +595,51 @@ local function buildMenuItems()
 
   table.insert(items, { title = "-" })
   table.insert(items, {
-    title = "Grow " .. CONFIG.growStep .. " px [G then " .. CONFIG.symbols.right .. " " .. CONFIG.symbols.down .. " " .. CONFIG.symbols.up .. "]",
+    title = "Resize "
+      .. CONFIG.growStep
+      .. " px [R then "
+      .. CONFIG.symbols.left
+      .. " "
+      .. CONFIG.symbols.up
+      .. " "
+      .. CONFIG.symbols.right
+      .. " "
+      .. CONFIG.symbols.down
+      .. " G S]",
     disabled = true,
   })
   table.insert(items, {
-    title = "Width [G " .. CONFIG.symbols.right .. "]",
+    title = "Grow Width [R " .. CONFIG.symbols.right .. "]",
     fn = function()
       growWindow(CONFIG.growStep, 0, "Grow width +" .. CONFIG.growStep .. " px")
     end,
   })
   table.insert(items, {
-    title = "Height [G " .. CONFIG.symbols.down .. "]",
+    title = "Grow Height [R " .. CONFIG.symbols.down .. "]",
     fn = function()
       growWindow(0, CONFIG.growStep, "Grow height +" .. CONFIG.growStep .. " px")
     end,
   })
   table.insert(items, {
-    title = "Width + Height [G " .. CONFIG.symbols.up .. "]",
-    fn = function()
-      growWindow(CONFIG.growStep, CONFIG.growStep, "Grow size +" .. CONFIG.growStep .. " px")
-    end,
-  })
-
-  table.insert(items, { title = "-" })
-  table.insert(items, {
-    title = "Shrink " .. CONFIG.growStep .. " px [S then " .. CONFIG.symbols.right .. " " .. CONFIG.symbols.down .. " " .. CONFIG.symbols.up .. "]",
-    disabled = true,
-  })
-  table.insert(items, {
-    title = "Width [S " .. CONFIG.symbols.right .. "]",
+    title = "Shrink Width [R " .. CONFIG.symbols.left .. "]",
     fn = function()
       shrinkWindow(CONFIG.growStep, 0, "Shrink width -" .. CONFIG.growStep .. " px")
     end,
   })
   table.insert(items, {
-    title = "Height [S " .. CONFIG.symbols.down .. "]",
+    title = "Shrink Height [R " .. CONFIG.symbols.up .. "]",
     fn = function()
       shrinkWindow(0, CONFIG.growStep, "Shrink height -" .. CONFIG.growStep .. " px")
     end,
   })
   table.insert(items, {
-    title = "Width + Height [S " .. CONFIG.symbols.up .. "]",
+    title = "Grow Width + Height [R G]",
+    fn = function()
+      growWindow(CONFIG.growStep, CONFIG.growStep, "Grow size +" .. CONFIG.growStep .. " px")
+    end,
+  })
+  table.insert(items, {
+    title = "Shrink Width + Height [R S]",
     fn = function()
       shrinkWindow(CONFIG.growStep, CONFIG.growStep, "Shrink size -" .. CONFIG.growStep .. " px")
     end,
@@ -640,7 +649,7 @@ local function buildMenuItems()
 end
 
 menu:setTitle(CONFIG.menuTitle)
-menu:setTooltip("Window management: Ctrl+Alt+Cmd+W for keyboard mode")
+menu:setTooltip("Window management: " .. formatModalHotkeyLabel() .. " for keyboard mode")
 menu:setMenu(buildMenuItems)
 
 windowFilter:subscribe(hs.window.filter.windowFocused, function(win)
@@ -685,12 +694,16 @@ windowMode:bind({}, "m", function()
   setModalGroup("move")
 end)
 
+windowMode:bind({}, "r", function()
+  setModalGroup("resize")
+end)
+
 windowMode:bind({}, "g", function()
-  setModalGroup("grow")
+  handleResizeShortcut("grow_both")
 end)
 
 windowMode:bind({}, "s", function()
-  setModalGroup("shrink")
+  handleResizeShortcut("shrink_both")
 end)
 
 for index = 1, 9 do
@@ -712,7 +725,11 @@ windowMode:bind({}, "down", function()
 end)
 
 windowMode:bind({}, "left", function()
-  handleMoveSelection("left", false)
+  if modalState.group == "move" then
+    handleMoveSelection("left", false)
+  else
+    handleSizeSelection("left")
+  end
 end)
 
 windowMode:bind({ "shift" }, "left", function()
