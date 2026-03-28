@@ -25,7 +25,7 @@ local CONFIG = {
   widthPresets = { 1400, 1600, 1800, 2000, 2200, 2400, 2600 },
   heightPresets = { 1000, 1200, 1400, 1500 },
   growStep = 100,
-  moveStep = 100,
+  moveStep = 50,
   cornerPresets = {
     { label = "Top Left", key = "topleft" },
     { label = "Center Top", key = "centertop" },
