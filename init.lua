@@ -198,11 +198,16 @@ local function clampFrameToScreen(frame, screenFrame)
   }
 end
 
-local function applyFrame(win, frame, label)
+local function applyFrame(win, frame, label, options)
   local screenFrame = win:screen():frame()
   local clampedFrame = clampFrameToScreen(frame, screenFrame)
   win:setFrame(clampedFrame)
-  alert(label)
+
+  if options and options.showSize then
+    alert(string.format("%s (%d x %d)", label, clampedFrame.w, clampedFrame.h))
+  else
+    alert(label)
+  end
 end
 
 local function applyAspectPreset(preset)
@@ -219,7 +224,7 @@ local function applyAspectPreset(preset)
     y = currentFrame.y,
     w = currentFrame.w,
     h = targetHeight,
-  }, "Aspect " .. preset.label)
+  }, "Aspect " .. preset.label, { showSize = true })
 end
 
 local function applyWidthPreset(width)
@@ -235,7 +240,7 @@ local function applyWidthPreset(width)
     y = currentFrame.y,
     w = width,
     h = currentFrame.h,
-  }, string.format("Width %d px", width))
+  }, string.format("Width %d px", width), { showSize = true })
 end
 
 local function applyHeightPreset(height)
@@ -251,7 +256,7 @@ local function applyHeightPreset(height)
     y = currentFrame.y,
     w = currentFrame.w,
     h = height,
-  }, string.format("Height %d px", height))
+  }, string.format("Height %d px", height), { showSize = true })
 end
 
 local function moveToCorner(corner)
@@ -305,7 +310,7 @@ local function growWindow(deltaWidth, deltaHeight, label)
     y = currentFrame.y,
     w = currentFrame.w + deltaWidth,
     h = currentFrame.h + deltaHeight,
-  }, label)
+  }, label, { showSize = true })
 end
 
 local function shrinkWindow(deltaWidth, deltaHeight, label)
@@ -321,7 +326,7 @@ local function shrinkWindow(deltaWidth, deltaHeight, label)
     y = currentFrame.y,
     w = currentFrame.w - deltaWidth,
     h = currentFrame.h - deltaHeight,
-  }, label)
+  }, label, { showSize = true })
 end
 
 WindowManager.modalState = WindowManager.modalState or { group = nil }
