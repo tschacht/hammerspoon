@@ -225,6 +225,12 @@ local function applyFrame(win, frame, label, options)
   end
 end
 
+local function exitModalIfActive()
+  if WindowManager.modalKeyGuard and windowMode then
+    windowMode:exit()
+  end
+end
+
 local function applyAspectPreset(preset)
   local win = getFocusedWindow()
   if not win then
@@ -240,6 +246,8 @@ local function applyAspectPreset(preset)
     w = currentFrame.w,
     h = targetHeight,
   }, "Aspect " .. preset.label, { showSize = true })
+
+  exitModalIfActive()
 end
 
 local function applyWidthPreset(width)
@@ -256,6 +264,8 @@ local function applyWidthPreset(width)
     w = width,
     h = currentFrame.h,
   }, string.format("Width %d px", width), { showSize = true })
+
+  exitModalIfActive()
 end
 
 local function applyHeightPreset(height)
@@ -272,6 +282,8 @@ local function applyHeightPreset(height)
     w = currentFrame.w,
     h = height,
   }, string.format("Height %d px", height), { showSize = true })
+
+  exitModalIfActive()
 end
 
 local function moveToCorner(corner)
@@ -482,8 +494,6 @@ local function handleNumberSelection(index)
     modalAlert("Choose A, W, or H first")
     return
   end
-
-  completeModalAction()
 end
 
 local function snapPositionForDirection(origin, current, step, direction)
@@ -547,21 +557,26 @@ local function handleMoveSelection(direction, shifted)
       return
     end
 
-    modalState.moveBottomMode = false
-    showModalGroupPrompt("move")
+    exitModalIfActive()
     return
   end
 
   if direction == "c" then
     moveToCorner("centertop")
+    exitModalIfActive()
+    return
   elseif direction == "b" then
     modalState.moveBottomMode = true
     showModalGroupPrompt("move")
     return
   elseif direction == "left" and shifted then
     moveToCorner("topleft")
+    exitModalIfActive()
+    return
   elseif direction == "right" and shifted then
     moveToCorner("topright")
+    exitModalIfActive()
+    return
   elseif direction == "left" or direction == "right" or direction == "up" or direction == "down" then
     moveByStep(direction)
   else
