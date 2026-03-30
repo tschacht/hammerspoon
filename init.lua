@@ -546,8 +546,10 @@ local function handleMoveSelection(direction, shifted)
   if modalState.moveBottomMode then
     if direction == "left" then
       moveToCorner("bottomleft")
+      modalState.moveBottomMode = false
     elseif direction == "right" then
       moveToCorner("bottomright")
+      modalState.moveBottomMode = false
     elseif direction == "b" then
       modalState.moveBottomMode = false
       showModalGroupPrompt("move")
@@ -556,27 +558,18 @@ local function handleMoveSelection(direction, shifted)
       modalAlert("Use Left, Right, or B")
       return
     end
-
-    exitModalIfActive()
-    return
   end
 
   if direction == "c" then
     moveToCorner("centertop")
-    exitModalIfActive()
-    return
   elseif direction == "b" then
     modalState.moveBottomMode = true
     showModalGroupPrompt("move")
     return
   elseif direction == "left" and shifted then
     moveToCorner("topleft")
-    exitModalIfActive()
-    return
   elseif direction == "right" and shifted then
     moveToCorner("topright")
-    exitModalIfActive()
-    return
   elseif direction == "left" or direction == "right" or direction == "up" or direction == "down" then
     moveByStep(direction)
   else
