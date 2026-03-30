@@ -640,6 +640,28 @@ local function hasOnlyShift(flags)
   return true
 end
 
+local function hasOnlyModalEntryModifiers(flags)
+  local expected = {}
+
+  for _, modifier in ipairs(CONFIG.modalHotkey.modifiers) do
+    expected[modifier] = true
+  end
+
+  for key, enabled in pairs(flags) do
+    if enabled and not expected[key] then
+      return false
+    end
+  end
+
+  for modifier, _ in pairs(expected) do
+    if not flags[modifier] then
+      return false
+    end
+  end
+
+  return true
+end
+
 local function isPlainModalKey(keyName, flags)
   if next(flags) ~= nil then
     return false
@@ -792,6 +814,11 @@ local function startModalKeyGuard()
     local eventType = event:getType()
     if eventType == hs.eventtap.event.types.flagsChanged then
       WindowManager.modalFlags = event:getFlags()
+      if hasOnlyModalEntryModifiers(WindowManager.modalFlags) then
+        resetModalState()
+        startModalTimer()
+        showModalHome()
+      end
       return true
     end
 
